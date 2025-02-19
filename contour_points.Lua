@@ -5,19 +5,17 @@ function moveTo(parsed)
     -- Отримуємо поточну позицію робота
     local currentPos = GetPose()
 
-    -- Створюємо об'єкт з координатами, додаючи значення за замовчуванням
-    local p = {
-        x = parsed.params.X or currentPos.x,
-        y = parsed.params.Y or currentPos.y,
-        z = parsed.params.Z or currentPos.z or 0,  -- Якщо Z не заданий, ставимо 0
-        r = parsed.params.R or currentPos.r or 0   -- Якщо R не заданий, ставимо 0
-    }
+    -- Створюємо об'єкт з координатами
+    local x = parsed.params.X or currentPos.x
+    local y = parsed.params.Y or currentPos.y
+    local z = parsed.params.Z or currentPos.z
+    local r = parsed.params.R or currentPos.r
 
     -- Виводимо параметри для перевірки
-    print("MovJ parameters: X=" .. p.x .. ", Y=" .. p.y .. ", Z=" .. p.z .. ", R=" .. p.r)
+    print("MovJ parameters: X=" .. x .. ", Y=" .. y .. ", Z=" .. z .. ", R=" .. r)
 
-    -- Виконуємо рух, додаючи швидкість
-    MovJ(p, { SpeedJ = 50 })
+    -- Виконуємо рух (змінюємо MovJ на SetPTPCmd для надійності)
+    SetPTPCmd("MOVJ_XYZ", x, y, z, r)
 
     -- Синхронізуємо рух
     Sync()
