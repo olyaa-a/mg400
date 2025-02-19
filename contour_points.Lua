@@ -4,7 +4,6 @@ local function trim(s)
 end
 
 -- Функція розбору одного рядка G-code.
--- Наприклад, "G01 X100 Y50 Z0" повертає { cmd = "G01", params = { X = 100, Y = 50, Z = 0 } }
 local function parseLine(line)
   local cmd = line:match("^(G%d+)")
   if not cmd then return nil end
@@ -32,13 +31,19 @@ local function computeArcMidPoint(start, finish, center, direction)
   return { midX, midY }
 end
 
--- Початкова позиція робота (за замовчуванням; встановіть відповідно)
+-- Початкова позиція робота (за замовчуванням; змініть за потребою)
 local currentPos = { X = 0, Y = 0, Z = 0, R = 0 }
 
 -- Функція обробки одного рядка G-code
 local function processGCodeLine(line)
   local parsed = parseLine(line)
   if not parsed then return end
+
+  -- Явно ігноруємо команди, які не є руховими (G21, M3 тощо)
+  if parsed.cmd == "G21" or parsed.cmd == "M3" then
+    -- G21 встановлює одиниці в мм, M3 – інша операція, тому просто пропускаємо їх
+    return
+  end
 
   if parsed.cmd == "G00" then
     -- Швидке переміщення – rapid move (MovJ)
@@ -76,20 +81,22 @@ local function processGCodeLine(line)
       Z = parsed.params.Z or currentPos.Z,
       R = parsed.params.R or currentPos.R
     }
-    local midXY = computeArcMidPoint({ currentPos.X, currentPos.Y }, { endPoint.X, endPoint.Y }, { center.X, center.Y }, parsed.cmd)
+    local midXY = computeArcMidPoint({ currentPos.X, currentPos.Y },
+                                      { endPoint.X, endPoint.Y },
+                                      { center.X, center.Y },
+                                      parsed.cmd)
     local midPoint = { X = midXY[1], Y = midXY[2], Z = endPoint.Z, R = endPoint.R }
-    -- Виклик функції Arc – зверніть увагу, API може вимагати саме такий формат параметрів
     Arc(midPoint, endPoint, { SpeedL = 50, AccL = 20, CP = 100, SYNC = 1 })
     Sync()
     currentPos = endPoint
 
   else
-    -- Ігнорувати інші команди (наприклад, M3, G21, заголовки)
+    -- Ігноруємо невідомі команди
     print("Ігнорую команду: " .. parsed.cmd)
   end
 end
 
--- Вставка G-code як багаторядкового рядка
+-- Вставка G-code як багаторядкового рядка (замість файлу)
 local gcodeText = [[
 %
 (Header)
@@ -113,57 +120,11 @@ G01 X37.099211 Y83.654150 Z-0.100000
 G01 X28.528083 Y92.201580 Z-0.100000
 G01 X28.528083 Y100.421680 Z-0.100000
 G01 X28.528083 Y108.641770 Z-0.100000
-G01 X20.436087 Y116.731660 Z-0.100000
-G01 X12.344091 Y124.821560 Z-0.100000
-G01 X12.344091 Y137.558710 Z-0.100000
-G01 X12.344091 Y150.295860 Z-0.100000
-G01 X16.230378 Y154.100530 Z-0.100000
-G01 X20.116666 Y157.905200 Z-0.100000
-G01 X16.230378 Y161.820450 Z-0.100000
-G01 X12.344091 Y165.735690 Z-0.100000
-G01 X12.344091 Y178.394020 Z-0.100000
-G01 X12.344091 Y191.052360 Z-0.100000
-G01 X20.436087 Y199.142252 Z-0.100000
-G01 X28.528083 Y207.232146 Z-0.100000
-G01 X28.528083 Y215.432652 Z-0.100000
-G01 X28.528083 Y223.633158 Z-0.100000
-G01 X37.100185 Y232.203300 Z-0.100000
-G01 X45.672286 Y240.773441 Z-0.100000
-G01 X53.863356 Y240.773441 Z-0.100000
-G01 X62.054426 Y240.773441 Z-0.100000
-G01 X70.156507 Y248.865437 Z-0.100000
-G01 X78.258588 Y256.957432 Z-0.100000
-G01 X85.178569 Y256.957432 Z-0.100000
-G01 X92.098549 Y256.957432 Z-0.100000
-G01 X95.023721 Y254.026651 Z-0.100000
-G01 X97.948893 Y251.095870 Z-0.100000
-G01 X97.948893 Y226.287418 Z-0.100000
-G01 X97.948893 Y201.478966 Z-0.100000
-G01 X95.018112 Y198.553794 Z-0.100000
-G01 X92.087331 Y195.628620 Z-0.100000
-G01 X78.940593 Y195.628620 Z-0.100000
-G01 X65.793856 Y195.628620 Z-0.100000
-G01 X65.793856 Y165.338020 Z-0.100000
-G01 X65.793856 Y135.047410 Z-0.100000
-G01 X73.086142 Y127.752820 Z-0.100000
-G01 X80.378429 Y120.458240 Z-0.100000
-G01 X86.238489 Y120.458240 Z-0.100000
-G01 X92.098549 Y120.458240 Z-0.100000
-G01 X95.023721 Y117.527460 Z-0.100000
-G01 X97.948893 Y114.596680 Z-0.100000
-G01 X97.948893 Y89.681750 Z-0.100000
-G01 X97.948893 Y64.766830 Z-0.100000
-G01 X95.018112 Y61.841660 Z-0.100000
-G01 X92.087331 Y58.916480 Z-0.100000
-G01 X85.169301 Y58.917270 Z-0.100000
-G01 X78.251271 Y58.918050 Z-0.100000
-G01 X70.153491 Y67.009510 Z-0.100000
-G00 Z5.000000
+... (решта G-code) ...
 (End cutting path id: path1)
-... (інші рядки G-code) ...
 ]]
 
--- Розбиваємо G-code на рядки та обробляємо
+-- Розбиваємо багаторядковий рядок на окремі рядки та обробляємо їх
 for line in gcodeText:gmatch("[^\r\n]+") do
   local trimmed = trim(line)
   if trimmed ~= "" and not trimmed:match("^%%") and not trimmed:match("^%(") then
