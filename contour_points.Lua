@@ -1,116 +1,67 @@
--- Lua-скрипт для автоматичної конвертації G-code у команди MovL/MovC для MG400
+-- Приклад Lua-скрипта для Dobot Studio (MG400), який виконує рухи за G-code
 
--- Допоміжна функція для парсингу координати (X, Y, Z, I, J, F)
-local function parseCoord(line, letter)
-    local pattern = letter .. "([%-%d%.]+)"
-    local s = string.match(line, pattern)
-    if s then return tonumber(s) else return nil end
-end
-
--- Встановлюємо початкову точку (як приклад: X=70.153491, Y=67.009510, Z=5.0)
-currentPos = {x = 70.153491, y = 67.009510, z = 5.0}
-rVal = 0
-
--- Функція перевірки для масиву точок (індекси 1,2,3,4)
-local function validPoint(point)
-    return point[1] and point[2] and point[3] and point[4]
-end
-
--- Обробка одного рядка G-code
-local function processLine(line)
-    line = line:match("^%s*(.-)%s*$")  -- обрізка пробілів
-    if line == "" or line:sub(1,1) == "(" or line:sub(1,1) == ";" then
-        return  -- пропускаємо порожні та коментарні рядки
+-- Функція для видалення коментарів та зайвих пробілів із рядка G-code
+function parseGCodeLine(line)
+    -- Видаляємо коментарі, які знаходяться у дужках
+    line = line:gsub("%(.-%)", "")
+    -- Замінюємо послідовності пробілів на один пробіл і обрізаємо початок/кінець рядка
+    line = line:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    if line == "" then return nil end
+    local parts = {}
+    for token in line:gmatch("%S+") do
+        table.insert(parts, token)
     end
+    return parts
+end
 
-    local gcmd = string.match(line, "^(G%d%d)")
-    if not gcmd then return end
-
-    if gcmd == "G00" or gcmd == "G01" then
-        -- Лінійне переміщення
-        local x = parseCoord(line, "X")
-        local y = parseCoord(line, "Y")
-        local z = parseCoord(line, "Z")
-        -- Якщо координата задана, оновлюємо поточну позицію
-        if x then currentPos.x = x end
-        if y then currentPos.y = y end
-        if z then currentPos.z = z end
-
-        local point = { currentPos.x, currentPos.y, currentPos.z, rVal }
-        if validPoint(point) then
-            MovL(point, true)
-        else
-            error("No motion point parameter for MovL instruction")
+-- Функція, що виконує інтерпретацію однієї розібраної команди
+function executeGCode(parts)
+    local cmd = parts[1]
+    if cmd == "G00" or cmd == "G0" then
+        -- Швидке переміщення (rapid move)
+        local x, y, z = nil, nil, nil
+        for i = 2, #parts do
+            local letter = parts[i]:sub(1,1)
+            local value = tonumber(parts[i]:sub(2))
+            if letter == "X" then x = value end
+            if letter == "Y" then y = value end
+            if letter == "Z" then z = value end
         end
-
-    elseif gcmd == "G02" or gcmd == "G03" then
-        -- Арочне переміщення
-        local endX = parseCoord(line, "X")
-        local endY = parseCoord(line, "Y")
-        local endZ = parseCoord(line, "Z")
-        local i = parseCoord(line, "I")
-        local j = parseCoord(line, "J")
-        if endX and endY and endZ and i and j then
-            local startX = currentPos.x
-            local startY = currentPos.y
-            local startZ = currentPos.z
-
-            -- Центр дуги
-            local centerX = startX + i
-            local centerY = startY + j
-
-            -- Обчислюємо кути для початкової та кінцевої точок відносно центру
-            local angleStart = math.atan2(startY - centerY, startX - centerX)
-            local angleEnd = math.atan2(endY - centerY, endX - centerX)
-            local midAngle = 0
-
-            if gcmd == "G02" then
-                -- За годинниковою стрілкою (CW): зменшуємо кут
-                if angleStart < angleEnd then
-                    angleStart = angleStart + 2 * math.pi
-                end
-                midAngle = angleStart - (angleStart - angleEnd) / 2
-            else
-                -- Проти годинникової стрілки (CCW): збільшуємо кут
-                if angleEnd < angleStart then
-                    angleEnd = angleEnd + 2 * math.pi
-                end
-                midAngle = angleStart + (angleEnd - angleStart) / 2
-            end
-
-            -- Радіус дуги
-            local radius = math.sqrt((startX - centerX)^2 + (startY - centerY)^2)
-            -- Обчислюємо проміжну точку на дузі
-            local midX = centerX + radius * math.cos(midAngle)
-            local midY = centerY + radius * math.sin(midAngle)
-            local midZ = startZ  -- припускаємо, що Z не змінюється
-
-            local midPoint = { midX, midY, midZ, rVal }
-            local endPoint = { endX, endY, endZ, rVal }
-            if validPoint(midPoint) and validPoint(endPoint) then
-                MovC(midPoint, endPoint, true)
-            else
-                error("No motion point parameter for MovC instruction")
-            end
-
-            -- Оновлюємо поточну позицію
-            currentPos.x = endX
-            currentPos.y = endY
-            currentPos.z = endZ
+        if x and y and z then
+            -- Виклик функції для швидкого переміщення (припускаємо, що SetPTPCmd(mode, x, y, z, r) доступна)
+            SetPTPCmd(0, x, y, z, 0)  -- 0 – режим швидкого руху
         end
+    elseif cmd == "G01" or cmd == "G1" then
+        -- Лінійне переміщення (linear move)
+        local x, y, z, f = nil, nil, nil, nil
+        for i = 2, #parts do
+            local letter = parts[i]:sub(1,1)
+            local value = tonumber(parts[i]:sub(2))
+            if letter == "X" then x = value end
+            if letter == "Y" then y = value end
+            if letter == "Z" then z = value end
+            if letter == "F" then f = value end  -- швидкість переміщення (feed rate)
+        end
+        if x and y and z then
+            -- Викликаємо функцію для лінійного руху (припускаємо, що SetPTPCmd(mode, x, y, z, r) з режимом 1 виконує лінійний рух)
+            SetPTPCmd(1, x, y, z, 0)
+        end
+    elseif cmd == "M3" then
+        -- Наприклад, M3 – команда "опустити інструмент" (для малювання – опустити ручку)
+        SetToolState(1)  -- 1 – опущено (наприклад, пензель або маркер торкається поверхні)
+    elseif cmd == "M5" then
+        -- M5 – команда "підняти інструмент"
+        SetToolState(0)  -- 0 – піднято
+    else
+        -- Для інших команд (наприклад, дугових G02/G03) можна додати відповідну обробку
+        print("Непідтримувана команда: " .. cmd)
     end
-    -- Інші команди G-code (M, F, коментарі) ігноруємо
 end
 
--- Функція обробки всього G-code, заданого у змінній gcodeText
-local function processGCode(gcodeText)
-    for line in string.gmatch(gcodeText, "[^\r\n]+") do
-        processLine(line)
-    end
-end
-
--- Вставте сюди весь ваш G-code як багаторядковий рядок.
-local gcodeText = [[
+-- Основна функція, яка зчитує G-code та виконує рухи
+function main()
+    -- Тут можна завантажити G-code з файлу або задати його як багаторядковий рядок
+    local gcode = [[
 %
 (Header)
 (Generated by gcodetools from Inkscape.)
@@ -1676,7 +1627,17 @@ M2
 (Using default footer. To add your own footer create file "footer" in the output dir.)
 (end)
 %
-]]
+    ]]
+    
+    -- Розбиваємо G-code на рядки та обробляємо кожну команду
+    for line in gcode:gmatch("[^\r\n]+") do
+        local parts = parseGCodeLine(line)
+        if parts then
+            executeGCode(parts)
+            Sleep(100)  -- затримка для завершення руху (налаштовуйте за потребою)
+        end
+    end
+end
 
--- Запуск обробки G-code
-processGCode(gcodeText)
+-- Запуск основної функції
+main()
