@@ -5,25 +5,31 @@ function moveTo(parsed)
     -- Отримуємо поточну позицію робота
     local currentPos = GetPose()
 
-    -- Створюємо об'єкт з координатами
-    local x = parsed.params.X or currentPos.x
-    local y = parsed.params.Y or currentPos.y
-    local z = parsed.params.Z or currentPos.z
-    local r = parsed.params.R or currentPos.r
+    -- Перевіряємо, чи всі необхідні параметри передані
+    if not parsed.params.X or not parsed.params.Y or not parsed.params.Z or not parsed.params.R then
+        print("Error: Missing motion point parameters for MovJ instruction")
+        return
+    end
 
-    -- Виводимо параметри для перевірки
-    print("MovJ parameters: X=" .. x .. ", Y=" .. y .. ", Z=" .. z .. ", R=" .. r)
+    -- Зчитуємо параметри
+    local x = parsed.params.X
+    local y = parsed.params.Y
+    local z = parsed.params.Z
+    local r = parsed.params.R
 
-    -- Виконуємо рух (змінюємо MovJ на SetPTPCmd для надійності)
-    SetPTPCmd("MOVJ_XYZ", x, y, z, r)
+    -- Виводимо параметри для налагодження
+    print("Executing MovJ with parameters: X=" .. x .. ", Y=" .. y .. ", Z=" .. z .. ", R=" .. r)
+
+    -- Виконуємо рух за допомогою MovJ
+    MovJ(x, y, z, r)
 
     -- Синхронізуємо рух
     Sync()
 end
 
--- Основний блок коду для запуску
+-- Основний блок коду
 function main()
-    -- Задаємо бажані координати для руху
+    -- Встановлюємо бажані координати
     local targetPos = {
         params = {
             X = 200,
