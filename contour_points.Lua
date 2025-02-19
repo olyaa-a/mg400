@@ -7,9 +7,14 @@ local function parseCoord(line, letter)
     if s then return tonumber(s) else return nil end
 end
 
--- Глобальні змінні: поточна позиція та значення обертання (r, якщо потрібно)
-currentPos = {x = 0, y = 0, z = 0}
+-- Встановлюємо початкову точку (як приклад: X=70.153491, Y=67.009510, Z=5.0)
+currentPos = {x = 70.153491, y = 67.009510, z = 5.0}
 rVal = 0
+
+-- Функція для перевірки, що точка містить усі необхідні параметри
+local function validPoint(point)
+    return point.X and point.Y and point.Z and point.R
+end
 
 -- Обробка одного рядка G-code
 local function processLine(line)
@@ -26,13 +31,17 @@ local function processLine(line)
         local x = parseCoord(line, "X")
         local y = parseCoord(line, "Y")
         local z = parseCoord(line, "Z")
-        -- Якщо координата не задана, залишаємо попереднє значення
+        -- Якщо координата задана, оновлюємо поточну позицію
         if x then currentPos.x = x end
         if y then currentPos.y = y end
         if z then currentPos.z = z end
 
-        -- Викликаємо MovL із отриманими координатами (r залишається 0)
-        MovL({currentPos.x, currentPos.y, currentPos.z, rVal}, true)
+        local point = {X = currentPos.x, Y = currentPos.y, Z = currentPos.z, R = rVal}
+        if validPoint(point) then
+            MovL(point, true)
+        else
+            error("No motion point parameter for MovL instruction")
+        end
 
     elseif gcmd == "G02" or gcmd == "G03" then
         -- Арочне переміщення
@@ -76,8 +85,13 @@ local function processLine(line)
             local midY = centerY + radius * math.sin(midAngle)
             local midZ = startZ  -- припускаємо, що Z не змінюється
 
-            -- Викликаємо MovC: перший параметр – проміжна точка, другий – кінцева
-            MovC({midX, midY, midZ, rVal}, {endX, endY, endZ, rVal}, true)
+            local midPoint = {X = midX, Y = midY, Z = midZ, R = rVal}
+            local endPoint = {X = endX, Y = endY, Z = endZ, R = rVal}
+            if validPoint(midPoint) and validPoint(endPoint) then
+                MovC(midPoint, endPoint, true)
+            else
+                error("No motion point parameter for MovC instruction")
+            end
 
             -- Оновлюємо поточну позицію
             currentPos.x = endX
