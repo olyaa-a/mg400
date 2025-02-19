@@ -16,87 +16,80 @@ end
 
 -- Функція обчислення проміжної точки дуги (тільки для XY)
 local function computeArcMidPoint(start, finish, center, direction)
-  local angle1 = math.atan2(start[2] - center[2], start[1] - center[1])
-  local angle2 = math.atan2(finish[2] - center[2], finish[1] - center[1])
+  local angle1 = math.atan2(start.y - center.y, start.x - center.x)
+  local angle2 = math.atan2(finish.y - center.y, finish.x - center.x)
   local dtheta = angle2 - angle1
-  if direction == "G02" then  -- за годинниковою стрілкою
+  if direction == "G02" then
     if dtheta > 0 then dtheta = dtheta - 2 * math.pi end
-  elseif direction == "G03" then  -- проти годинникової стрілки
+  elseif direction == "G03" then
     if dtheta < 0 then dtheta = dtheta + 2 * math.pi end
   end
   local midAngle = angle1 + dtheta / 2
-  local radius = math.sqrt((start[1] - center[1])^2 + (start[2] - center[2])^2)
-  local midX = center[1] + radius * math.cos(midAngle)
-  local midY = center[2] + radius * math.sin(midAngle)
-  return { midX, midY }
+  local radius = math.sqrt((start.x - center.x)^2 + (start.y - center.y)^2)
+  return { x = center.x + radius * math.cos(midAngle), y = center.y + radius * math.sin(midAngle) }
 end
 
--- Початкова позиція робота (за замовчуванням; змініть за потребою)
-local currentPos = { X = 0, Y = 0, Z = 0, R = 0 }
+-- Глобальна поточна позиція (використовуємо нижній регістр)
+local currentPos = { x = 0, y = 0, z = 0, r = 0 }
 
 -- Функція обробки одного рядка G-code
 local function processGCodeLine(line)
   local parsed = parseLine(line)
   if not parsed then return end
 
-  -- Явно ігноруємо команди, які не є руховими (G21, M3 тощо)
+  -- Ігноруємо команди, які не є руховими
   if parsed.cmd == "G21" or parsed.cmd == "M3" then
-    -- G21 встановлює одиниці в мм, M3 – інша операція, тому просто пропускаємо їх
     return
   end
 
   if parsed.cmd == "G00" then
-    -- Швидке переміщення – rapid move (MovJ)
     local p = {
-      X = parsed.params.X or currentPos.X,
-      Y = parsed.params.Y or currentPos.Y,
-      Z = parsed.params.Z or currentPos.Z,
-      R = parsed.params.R or currentPos.R
+      x = parsed.params.X or currentPos.x,
+      y = parsed.params.Y or currentPos.y,
+      z = parsed.params.Z or currentPos.z,
+      r = parsed.params.R or currentPos.r
     }
     MovJ(p)
     Sync()
     currentPos = p
 
   elseif parsed.cmd == "G01" then
-    -- Лінійне переміщення – drawing move (MovL)
     local p = {
-      X = parsed.params.X or currentPos.X,
-      Y = parsed.params.Y or currentPos.Y,
-      Z = parsed.params.Z or currentPos.Z,
-      R = parsed.params.R or currentPos.R
+      x = parsed.params.X or currentPos.x,
+      y = parsed.params.Y or currentPos.y,
+      z = parsed.params.Z or currentPos.z,
+      r = parsed.params.R or currentPos.r
     }
     MovL(p)
     Sync()
     currentPos = p
 
   elseif parsed.cmd == "G02" or parsed.cmd == "G03" then
-    -- Аркова інтерполяція (G02: за годинниковою, G03: проти)
     local center = {
-      X = currentPos.X + (parsed.params.I or 0),
-      Y = currentPos.Y + (parsed.params.J or 0)
+      x = currentPos.x + (parsed.params.I or 0),
+      y = currentPos.y + (parsed.params.J or 0)
     }
     local endPoint = {
-      X = parsed.params.X or currentPos.X,
-      Y = parsed.params.Y or currentPos.Y,
-      Z = parsed.params.Z or currentPos.Z,
-      R = parsed.params.R or currentPos.R
+      x = parsed.params.X or currentPos.x,
+      y = parsed.params.Y or currentPos.y,
+      z = parsed.params.Z or currentPos.z,
+      r = parsed.params.R or currentPos.r
     }
-    local midXY = computeArcMidPoint({ currentPos.X, currentPos.Y },
-                                      { endPoint.X, endPoint.Y },
-                                      { center.X, center.Y },
+    local midXY = computeArcMidPoint({ x = currentPos.x, y = currentPos.y },
+                                      { x = endPoint.x, y = endPoint.y },
+                                      center,
                                       parsed.cmd)
-    local midPoint = { X = midXY[1], Y = midXY[2], Z = endPoint.Z, R = endPoint.R }
+    local midPoint = { x = midXY.x, y = midXY.y, z = endPoint.z, r = endPoint.r }
     Arc(midPoint, endPoint, { SpeedL = 50, AccL = 20, CP = 100, SYNC = 1 })
     Sync()
     currentPos = endPoint
 
   else
-    -- Ігноруємо невідомі команди
     print("Ігнорую команду: " .. parsed.cmd)
   end
 end
 
--- Вставка G-code як багаторядкового рядка (замість файлу)
+-- G-code як багаторядковий рядок (вставте сюди ваш повний G-code)
 local gcodeText = [[
 %
 (Header)
@@ -120,11 +113,10 @@ G01 X37.099211 Y83.654150 Z-0.100000
 G01 X28.528083 Y92.201580 Z-0.100000
 G01 X28.528083 Y100.421680 Z-0.100000
 G01 X28.528083 Y108.641770 Z-0.100000
-... (решта G-code) ...
+...
 (End cutting path id: path1)
 ]]
 
--- Розбиваємо багаторядковий рядок на окремі рядки та обробляємо їх
 for line in gcodeText:gmatch("[^\r\n]+") do
   local trimmed = trim(line)
   if trimmed ~= "" and not trimmed:match("^%%") and not trimmed:match("^%(") then
