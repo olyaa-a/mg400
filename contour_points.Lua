@@ -11,9 +11,9 @@ end
 currentPos = {x = 70.153491, y = 67.009510, z = 5.0}
 rVal = 0
 
--- Функція для перевірки, що точка містить усі необхідні параметри
+-- Функція перевірки для масиву точок (індекси 1,2,3,4)
 local function validPoint(point)
-    return point.X and point.Y and point.Z and point.R
+    return point[1] and point[2] and point[3] and point[4]
 end
 
 -- Обробка одного рядка G-code
@@ -36,7 +36,7 @@ local function processLine(line)
         if y then currentPos.y = y end
         if z then currentPos.z = z end
 
-        local point = {X = currentPos.x, Y = currentPos.y, Z = currentPos.z, R = rVal}
+        local point = { currentPos.x, currentPos.y, currentPos.z, rVal }
         if validPoint(point) then
             MovL(point, true)
         else
@@ -85,8 +85,8 @@ local function processLine(line)
             local midY = centerY + radius * math.sin(midAngle)
             local midZ = startZ  -- припускаємо, що Z не змінюється
 
-            local midPoint = {X = midX, Y = midY, Z = midZ, R = rVal}
-            local endPoint = {X = endX, Y = endY, Z = endZ, R = rVal}
+            local midPoint = { midX, midY, midZ, rVal }
+            local endPoint = { endX, endY, endZ, rVal }
             if validPoint(midPoint) and validPoint(endPoint) then
                 MovC(midPoint, endPoint, true)
             else
